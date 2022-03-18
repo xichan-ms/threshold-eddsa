@@ -78,7 +78,7 @@ func main() {
 // ### specific protocol process and datastruct #########################################################################################################################################################
 
 type OutputKGRndOne struct {
-	Sk   [64]byte // (privateKey || p)
+	Sk   [32]byte
 	Pk   [32]byte
 	CPk  [32]byte
 	DPk  [64]byte
@@ -93,7 +93,7 @@ type InputKGRndTwo struct {
 	Id   [][32]byte
 	ZkPk [][64]byte
 
-	Sk [64]byte
+	Sk [32]byte
 }
 
 type OutputKGRndTwo struct {
@@ -119,7 +119,7 @@ type OutputKGRndThree struct {
 
 type InputSignRndOne struct {
 	Message []byte
-	Sk      [64]byte
+	Sk      [32]byte
 }
 
 type OutputSignRndOne struct {
@@ -331,39 +331,34 @@ func KGRndOne() []OutputKGRndOne {
 
 	for loopi := 0; loopi < N; loopi++ {
 
-		// 1.1 generate 32-bits seed
+		// 1.1-1.2 generate 32-bits privatekey', then bit calculation to privatekey
 		rand := cryptorand.Reader
 
-		var seed [32]byte
+		var sk [32]byte
+		var pk [32]byte
+		var skTem [64]byte
 
-		if _, err := io.ReadFull(rand, seed[:]); err != nil {
-			fmt.Println("Error: io.ReadFull(rand, seed)")
+		if _, err := io.ReadFull(rand, sk[:]); err != nil {
+			fmt.Println("Error: io.ReadFull(rand, sk)")
 		}
 
-		// 1.2 privateKey' = SHA512(seed)
-		var sk [64]byte
-		var pk [32]byte
+		sk[0] &= 248
+		sk[31] &= 127
+		sk[31] |= 64
 
-		seedDigest := sha512.Sum512(seed[:])
-
-		seedDigest[0] &= 248
-		seedDigest[31] &= 127
-		seedDigest[31] |= 64
-
-		copy(sk[:], seedDigest[:])
+		copy(skTem[:], sk[:])
+		ed.ScReduce(&sk, &skTem)
 
 		// 1.3 publicKey
-		var temSk [32]byte
-		copy(temSk[:], sk[:32])
 
 		var A ed.ExtendedGroupElement
-		ed.GeScalarMultBase(&A, &temSk)
+		ed.GeScalarMultBase(&A, &sk)
 
 		A.ToBytes(&pk)
 
 		CPk, DPk := commit.Commit(pk)
 
-		zkPk := zks.Prove(temSk)
+		zkPk := zks.Prove(sk)
 
 		// 1.4
 		var id [32]byte
@@ -555,14 +550,15 @@ func SignRndOne(input []InputSignRndOne) []OutputSignRndOne {
 
 		// 1. calculate R
 		var r [32]byte
+		var rTem [64]byte
 		var RBytes [32]byte
-		var rDigest [64]byte
 
-		h := sha512.New()
-		h.Write(input[loopi].Sk[32:])
-		h.Write(input[loopi].Message[:])
-		h.Sum(rDigest[:0])
-		ed.ScReduce(&r, &rDigest)
+		rand := cryptorand.Reader
+		if _, err := io.ReadFull(rand, r[:]); err != nil {
+			fmt.Println("Error: io.ReadFull(rand, r)")
+		}
+		copy(rTem[:], r[:])
+		ed.ScReduce(&r, &rTem)
 
 		var R ed.ExtendedGroupElement
 		ed.GeScalarMultBase(&R, &r)
