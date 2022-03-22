@@ -9,7 +9,7 @@ import (
 	"io"
 )
 
-func Commit(secret [32]byte) ([32]byte, [64]byte) {
+func Commit(secret [][32]byte) ([32]byte, [][32]byte) {
 	// Generate the random num
 	rand := cryptorand.Reader
 	var rndNum [32]byte
@@ -17,9 +17,9 @@ func Commit(secret [32]byte) ([32]byte, [64]byte) {
 		fmt.Println("Error: io.ReadFull(rand, rndNum[:])")
 	}
 
-	var D [64]byte
-	copy(D[:32], rndNum[:])
-	copy(D[32:], secret[:])
+	var D [][32]byte
+	D = append(D, rndNum)
+	D = append(D, secret...)
 
 	var rsDigest512 [64]byte
 	var C [32]byte
@@ -28,7 +28,9 @@ func Commit(secret [32]byte) ([32]byte, [64]byte) {
 	h := sha512.New()
 
 	h.Write(rndNum[:])
-	h.Write(secret[:])
+	for _, sec := range secret {
+		h.Write(sec[:])
+	}
 	h.Sum(rsDigest512[:0])
 
 	// hash by sha256
@@ -40,15 +42,16 @@ func Commit(secret [32]byte) ([32]byte, [64]byte) {
 	return C, D
 }
 
-func Verify(C [32]byte, D [64]byte) bool {
+func Verify(C [32]byte, D [][32]byte) bool {
 	var rsDigest512 [64]byte
 	var rsDigest256 [32]byte
 
 	// hash by sha512
 	h := sha512.New()
 
-	h.Write(D[:32])
-	h.Write(D[32:])
+	for _, sec := range D {
+		h.Write(sec[:])
+	}
 	h.Sum(rsDigest512[:0])
 
 	// hash by sha256
